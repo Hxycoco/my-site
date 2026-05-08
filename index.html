@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>产品与海报文案生成器</title>
+    <style>
+        :root {
+            --primary-color: #4CAF50;
+            --bg-color: #f5f7f9;
+            --box-bg: #ffffff;
+            --text-color: #333333;
+            --border-color: #e0e0e0;
+        }
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1, h2, h3 { text-align: center; color: #2c3e50; }
+        .instructions { background: #e3f2fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-size: 0.9em; }
+        .card { background: var(--box-bg); padding: 20px; border-radius: 8px; box-shadow: 0 4px 6px rgba(0,0,0,0.05); margin-bottom: 20px; border: 1px solid var(--border-color); position: relative; }
+        .form-group { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; font-weight: bold; }
+        input[type="text"], input[type="password"], textarea {
+            width: 100%; padding: 10px; border: 1px solid var(--border-color); border-radius: 4px; box-sizing: border-box; transition: all 0.3s;
+        }
+        button {
+            background-color: var(--primary-color); color: white; border: none; padding: 10px 20px; border-radius: 4px; cursor: pointer; font-size: 1em; transition: background 0.3s;
+        }
+        button:hover { background-color: #45a049; }
+        button:disabled { background-color: #cccccc; cursor: not-allowed; }
+        button.secondary { background-color: #f44336; }
+        button.secondary:hover { background-color: #da190b; }
+
+        #chat-container { display: none; }
+        #chat-history {
+            max-height: 500px;
+            overflow-y: auto;
+            background-color: #f9f9fc;
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 15px;
+            margin-bottom: 15px;
+        }
+        .message-wrapper { margin-bottom: 20px; display: flex; flex-direction: column; }
+        .message-label { font-size: 0.85em; font-weight: bold; margin-bottom: 5px; color: #555; }
+        .message { padding: 12px 16px; border-radius: 8px; max-width: 85%; word-wrap: break-word; }
+        
+        .message-wrapper.user { align-items: flex-end; }
+        .message-wrapper.user .message { background-color: #e3f2fd; border-bottom-right-radius: 0; }
+        
+        .message-wrapper.assistant { align-items: flex-start; }
+        .message-wrapper.assistant .message { background-color: #ffffff; border: 1px solid #e0e0e0; border-bottom-left-radius: 0; white-space: pre-wrap;}
+
+        #loading { display: none; text-align: center; color: #4CAF50; font-weight: bold; margin: 10px 0;}
+        #error-msg { display: none; color: #d32f2f; background: #ffebee; padding: 10px; border-radius: 4px; text-align: center; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+
+    <h1>✨ 智能产品与海报文案生成器</h1>
+    
+    <div class="instructions">
+        <strong>使用说明：</strong><br>
+        1. 本工具使用阿里云百炼 Qwen3.6-plus 模型生成文案。<br>
+        2. 请先在下方填入并保存您的 API Key（密钥仅保存在当前浏览器内存中）。<br>
+        3. 填写产品信息并生成初步文案后，您可以在“多轮对话区”继续提出修改意见。
+    </div>
+
+    <div class="card" id="setup-section">
+        <div class="form-group">
+            <label for="apiKey">🔑 阿里云百炼 API Key：</label>
+            <input type="password" id="apiKey" placeholder="sk-xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx" autocomplete="off">
+        </div>
+        <button id="saveKeyBtn" onclick="saveKey()">保存密钥</button>
+    </div>
+
+    <div class="card" id="input-section">
+        <h3>📝 填写产品基本信息</h3>
+        <div class="form-group">
+            <label>产品名称：</label>
+            <input type="text" id="prodName" placeholder="例如：极速版智能扫地机器人">
+        </div>
+        <div class="form-group">
+            <label>目标受众：</label>
+            <input type="text" id="prodAudience" placeholder="例如：忙碌的都市白领、养宠家庭">
+        </div>
+        <div class="form-group">
+            <label>核心卖点：</label>
+            <textarea id="prodPoints" rows="3" placeholder="例如：超薄机身、AI避障、防毛发缠绕、自动集尘"></textarea>
+        </div>
+        <div class="form-group">
+            <label>期望文案风格：</label>
+            <input type="text" id="prodStyle" placeholder="例如：科技感、活泼亲切、高端大气">
+        </div>
+        <button id="generateBtn" onclick="generateInitialCopy()">🚀 生成初版文案</button>
+        <button class="secondary" id="resetBtn" onclick="resetApp()">🔄 清空并重新开始</button>
+    </div>
+
+    <div class="card" id="chat-container">
+        <h3>💬 文案结果与多轮修改区</h3>
+        
+        <div id="chat-history"></div>
+        <div id="loading">⏳ AI 正在思考中，请稍候...</div>
+        <div id="error-msg"></div>
+
+        <div class="form-group" style="margin-top: 15px; display: flex; gap: 10px;">
+            <input type="text" id="modifyInput" placeholder="在此输入修改建议，例如：标题更抓人眼球一点，字数控制在100字内" onkeypress="handleEnter(event)">
+            <button id="modifyBtn" onclick="sendModification()">发送修改建议</button>
+        </div>
+    </div>
+
+    <script>
+        let currentApiKey = "";
+        let conversationHistory = []; 
+        const API_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions";
+        const MODEL_NAME = "qwen3.6-plus";
+
+        // 保存密钥
+        function saveKey() {
+            const keyInput = document.getElementById('apiKey').value.trim();
+            if (!keyInput) { 
+                alert("API Key 不能为空！"); 
+                return; 
+            }
+            currentApiKey = keyInput;
+            
+            // 更新按钮状态提供反馈
+            const btn = document.getElementById('saveKeyBtn');
+            btn.innerText = "✅ 密钥已保存 (可重新修改)";
+            btn.style.backgroundColor = "#2e7d32"; 
+        }
+
+        // 清空重置应用
+        function resetApp() {
+            if(confirm("确定要清空当前填写的表单和所有对话记录吗？")) {
+                conversationHistory = [];
+                document.getElementById('prodName').value = '';
+                document.getElementById('prodAudience').value = '';
+                document.getElementById('prodPoints').value = '';
+                document.getElementById('prodStyle').value = '';
+                document.getElementById('modifyInput').value = '';
+                document.getElementById('chat-history').innerHTML = '';
+                document.getElementById('chat-container').style.display = 'none';
+                document.getElementById('generateBtn').disabled = false;
+                hideError();
+            }
+        }
+
+        function handleEnter(e) {
+            if (e.key === 'Enter') sendModification();
+        }
+
+        async function generateInitialCopy() {
+            // 新增检查：如果没有填写并保存 API Key，则阻止生成并提示用户
+            if (!currentApiKey) {
+                alert("请先在上方输入并保存您的 阿里云百炼 API Key！");
+                return;
+            }
+
+            const name = document.getElementById('prodName').value.trim();
+            const audience = document.getElementById('prodAudience').value.trim();
+            const points = document.getElementById('prodPoints').value.trim();
+            const style = document.getElementById('prodStyle').value.trim();
+
+            if(!name || !audience || !points || !style) {
+                alert("请填写完整的产品信息（产品名称、受众、卖点、风格）！"); 
+                return;
+            }
+
+            hideError();
+            document.getElementById('chat-container').style.display = 'block';
+            
+            const systemPrompt = "你是一个专业的资深文案策划。请根据用户提供的产品信息，生成包含【标题】、【介绍语】、【宣传文案】三个部分的完整方案。如果用户后续提出修改要求，请根据前文进行调整。";
+            const userPrompt = `产品名称：${name}\n目标受众：${audience}\n核心卖点：${points}\n文案风格：${style}`;
+            
+            conversationHistory = [
+                { role: "system", content: systemPrompt },
+                { role: "user", content: userPrompt }
+            ];
+
+            appendMessage("user", `【生成初始文案要求】\n产品：${name}\n受众：${audience}\n风格：${style}`);
+            
+            document.getElementById('generateBtn').disabled = true;
+            await callAPI();
+        }
+
+        async function sendModification() {
+            const modifyText = document.getElementById('modifyInput').value.trim();
+            if (!modifyText) return;
+
+            hideError();
+            conversationHistory.push({ role: "user", content: modifyText });
+            appendMessage("user", modifyText);
+            
+            document.getElementById('modifyInput').value = '';
+            document.getElementById('modifyBtn').disabled = true;
+            
+            await callAPI();
+            document.getElementById('modifyBtn').disabled = false;
+        }
+
+        async function callAPI() {
+            showLoading(true);
+            try {
+                const response = await fetch(API_URL, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${currentApiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: MODEL_NAME,
+                        messages: conversationHistory
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.error?.message || "请求失败，请检查 API Key 是否正确或网络状况。");
+                }
+
+                const assistantReply = data.choices[0].message.content;
+                
+                conversationHistory.push({ role: "assistant", content: assistantReply });
+                appendMessage("assistant", assistantReply);
+
+            } catch (err) {
+                showError("调用出错：" + err.message);
+                conversationHistory.pop();
+            } finally {
+                showLoading(false);
+            }
+        }
+
+        function appendMessage(role, text) {
+            const historyDiv = document.getElementById('chat-history');
+            
+            const wrapperDiv = document.createElement('div');
+            wrapperDiv.className = `message-wrapper ${role}`;
+            
+            const labelDiv = document.createElement('div');
+            labelDiv.className = 'message-label';
+            labelDiv.innerText = role === 'user' ? '👤 你的要求' : '🤖 AI 文案回复';
+
+            const msgDiv = document.createElement('div');
+            msgDiv.className = 'message';
+            msgDiv.innerText = text;
+
+            wrapperDiv.appendChild(labelDiv);
+            wrapperDiv.appendChild(msgDiv);
+            historyDiv.appendChild(wrapperDiv);
+            
+            historyDiv.scrollTo({ top: historyDiv.scrollHeight, behavior: 'smooth' });
+        }
+
+        function showLoading(show) { document.getElementById('loading').style.display = show ? 'block' : 'none'; }
+        function showError(msg) { 
+            const errDiv = document.getElementById('error-msg');
+            errDiv.innerText = msg; errDiv.style.display = 'block'; 
+        }
+        function hideError() { document.getElementById('error-msg').style.display = 'none'; }
+    </script>
+</body>
+</html>
